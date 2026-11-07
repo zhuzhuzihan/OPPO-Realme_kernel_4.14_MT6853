@@ -51,6 +51,12 @@ on:
         options:
           - main
 
+      Source:
+        type: string
+        description: "内核源码仓库 (owner/repo, 留空=本仓库)"
+        required: false
+        default: ""
+
     
 jobs:
   build:
@@ -89,9 +95,17 @@ jobs:
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace
         CLONE_BRANCH="${{ github.event.inputs.Branch }}"
-        echo "使用 $CLONE_BRANCH 分支"
-        git clone -b "$CLONE_BRANCH" --single-branch https://github.com/sanba0519/OPPO-Realme_kernel_4.14_MT6853.git android-kernel
+        # 源仓库: 手动输入优先, 否则默认本仓库 (push/fork 均自适应)
+        if [ -n "${{ github.event.inputs.Source }}" ]; then
+          SRC_REPO="${{ github.event.inputs.Source }}"
+        else
+          SRC_REPO="${{ github.repository }}"
+        fi
+        echo "使用 $SRC_REPO @ $CLONE_BRANCH 分支"
+        git clone -b "$CLONE_BRANCH" --single-branch \
+          "https://github.com/${SRC_REPO}.git" android-kernel
         cd android-kernel
+        git log -1 --format='HEAD: %h %an %s'
 
     - name: Apply patch
       run: |
@@ -122,9 +136,14 @@ jobs:
 
         if [ "${{ github.event.inputs.SUSFS }}" = "true" ]; then
           echo "KSU_LOG: 开启 SUSFS"
-          wget https://raw.githubusercontent.com/sanba0519/Kernel-patch/refs/heads/main/susfs_patch_to_4.14.patch -O susfs-4.14.patch
-          patch -p1 < susfs-4.14.patch || { echo "SUSFS patch 应用失败"; exit 1; }
-
+          # SUSFS patch: 仓库内 patches/ 优先(可自行改), 否则拉上游
+          if [ -f patches/susfs_patch_to_4.14.patch ]; then
+            echo "使用仓库内 patches/susfs_patch_to_4.14.patch"
+            patch -p1 < patches/susfs_patch_to_4.14.patch || { echo "SUSFS patch 应用失败"; exit 1; }
+          else
+            wget https://raw.githubusercontent.com/sanba0519/Kernel-patch/refs/heads/main/susfs_patch_to_4.14.patch -O susfs-4.14.patch
+            patch -p1 < susfs-4.14.patch || { echo "SUSFS patch 应用失败"; exit 1; }
+          fi
         fi
 
 
@@ -145,10 +164,17 @@ jobs:
 
             # BakaSU 的 susfs_compat.mk 会无条件 $(error "Please wait simonpunk") 拦截构建，必须在 setup.sh 克隆源码之后跑，注释掉该拦截，否则 make 阶段会被挡死
             echo "KSU_LOG: 关闭 BakaSU susfs_compat.mk 的 Please wait simonpunk 拦截"
-            wget https://raw.githubusercontent.com/sanba0519/Kernel-patch/refs/heads/main/susfs_compat_nofail.sh -O susfs_compat_nofail.sh \
-              || { echo "下载 susfs_compat_nofail.sh 失败"; exit 1; }
-            bash susfs_compat_nofail.sh \
-              || { echo "susfs_compat_nofail.sh 执行失败，BakaSU 拦截未解除，编译必然失败"; exit 1; }
+            # 解除拦截脚本: 仓库内 patches/ 优先(可自行改), 否则拉上游
+            if [ -f patches/susfs_compat_nofail.sh ]; then
+              echo "使用仓库内 patches/susfs_compat_nofail.sh"
+              bash patches/susfs_compat_nofail.sh \
+                || { echo "susfs_compat_nofail.sh 执行失败，BakaSU 拦截未解除，编译必然失败"; exit 1; }
+            else
+              wget https://raw.githubusercontent.com/sanba0519/Kernel-patch/refs/heads/main/susfs_compat_nofail.sh -O susfs_compat_nofail.sh \
+                || { echo "下载 susfs_compat_nofail.sh 失败"; exit 1; }
+              bash susfs_compat_nofail.sh \
+                || { echo "susfs_compat_nofail.sh 执行失败，BakaSU 拦截未解除，编译必然失败"; exit 1; }
+            fi
           fi
         else
           echo "KSU_LOG: Setup RKSU (rsuntk)"
@@ -179,8 +205,8 @@ jobs:
         export PATH=$GITHUB_WORKSPACE/kernel_workspace/gcc64/bin:$GITHUB_WORKSPACE/kernel_workspace/gcc32/bin:$PATH
         export ARCH=arm64
         export SUBARCH=arm64
-        export KBUILD_BUILD_HOST=coolapk@sanba
-        export KBUILD_BUILD_USER=GitHub@sanba0519
+        export KBUILD_BUILD_HOST="${{ github.repository_owner }}"
+        export KBUILD_BUILD_USER="GitHub@$(date +%Y%m%d)"
 
         make -j$(nproc --all) O=out ARCH=arm64 mt6853-ss_defconfig
 
@@ -377,7 +403,13 @@ jobs:
     - name: Package AnyKernel3
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace
-        git clone https://github.com/sanba0519/AnyKernel3
+        # AnyKernel3: 仓库根带 AK3_DIR 环境变量则用本地副本, 否则拉上游
+        if [ -n "${AK3_DIR:-}" ] && [ -d "$AK3_DIR" ]; then
+          echo "使用仓库内 AnyKernel3: $AK3_DIR"
+          cp -r "$AK3_DIR" AnyKernel3
+        else
+          git clone https://github.com/osm0sis/AnyKernel3
+        fi
         sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
         sed -i 's!block=/dev/block/by-name/boot;!block=auto;!g' AnyKernel3/anykernel.sh
         sed -i 's/is_slot_device=0;/is_slot_device=auto;/g' AnyKernel3/anykernel.sh
