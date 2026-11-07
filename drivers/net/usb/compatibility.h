@@ -604,6 +604,13 @@
 		return READ_ONCE(list->next) == (const struct sk_buff *) list;
 	}
 #endif /* skb_queue_empty_lockless backport guard */
+
+/* skb_queue_len_lockless: 5.x 才有, 4.14 只有 skb_queue_len(持锁版).
+ * WARN_ON 只读长度, 语义等价替换. */
+static inline __u32 skb_queue_len_lockless(const struct sk_buff_head *list_)
+{
+	return skb_queue_len(list_);
+}
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5,3,10) */
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5,4,0) */
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5,6,0) */
