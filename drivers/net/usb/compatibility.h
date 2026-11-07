@@ -563,10 +563,7 @@
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(4,12,0) */
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,19,10) && \
     !(LINUX_VERSION_CODE >= KERNEL_VERSION(4,14,217) && LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0))
-	static inline void skb_mark_not_on_list(struct sk_buff *skb)
-	{
-		skb->next = NULL;
-	}
+/* 本树(skbuf.h)已 backport skb_mark_not_on_list(4.14.186+ vendor), 不再重复定义 */
 #endif
 	static inline void linkmode_set_bit(int nr, volatile unsigned long *addr)
 	{
@@ -599,10 +596,14 @@
 //		return PCI_DEVID(dev->bus->number, dev->devfn);
 //	}
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5,2,0) */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,20,0)
+/* 本树(skbuf.h)已 backport skb_queue_empty_lockless, 直接用树内的, 防重定义 */
+#else
 	static inline bool skb_queue_empty_lockless(const struct sk_buff_head *list)
 	{
 		return READ_ONCE(list->next) == (const struct sk_buff *) list;
 	}
+#endif /* skb_queue_empty_lockless backport guard */
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5,3,10) */
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5,4,0) */
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5,6,0) */
