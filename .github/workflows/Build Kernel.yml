@@ -410,9 +410,16 @@ jobs:
         else
           git clone https://github.com/osm0sis/AnyKernel3
         fi
+        # 官方模板 anykernel.sh 是函数体引号内的属性, sed 直接改属性值
+        sed -i 's/kernel.string=.*/kernel.string=MT6853 4.14.186 BakaSU+BBR+DroidSpace r8152 v2.22.1/' AnyKernel3/anykernel.sh
         sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
-        sed -i 's!block=/dev/block/by-name/boot;!block=auto;!g' AnyKernel3/anykernel.sh
-        sed -i 's/is_slot_device=0;/is_slot_device=auto;/g' AnyKernel3/anykernel.sh
+        # BLOCK/IS_SLOT_DEVICE 是普通 shell 变量行, 官方模板默认 omap 示例路径必须替换
+        sed -i 's!^BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;!BLOCK=auto;!' AnyKernel3/anykernel.sh
+        sed -i 's/^IS_SLOT_DEVICE=0;/IS_SLOT_DEVICE=auto;/' AnyKernel3/anykernel.sh
+        # 裁掉 maguro/tuna 示例段(dump_boot..write_boot 之间的 ramdisk 补丁示例对真机有害)
+        awk 'BEGIN{skip=0} /^# boot install/{print; skip=1; next} /^write_boot;/{skip=0} skip==0{print}' \
+          AnyKernel3/anykernel.sh > AnyKernel3/anykernel.sh.tmp \
+          && mv AnyKernel3/anykernel.sh.tmp AnyKernel3/anykernel.sh
         cp android-kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
         rm -rf AnyKernel3/.git* AnyKernel3/README.md
 
